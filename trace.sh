@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # vim: tw=100 fo=2croqlt
 #
 # A simple raytracer implemented as a bash script. It reads geometry from text file and writes a
@@ -14,7 +13,7 @@
 # interpreted as normalized RGB values, i.e. full saturation at value 1.
 
 # Help text
-help_text="This is a very simply raytracer implemented in bash.
+help_text="This is a very simple raytracer implemented in bash.
 
 Usage: $0 [options]
 
@@ -73,12 +72,12 @@ batch_size="100"
 color_scale="255"
 # Default geometry
 default_geometry="\
-1,-1,-1 0,0,1 1,0,0	1,1,-1 0,0,1 0,1,0	-1,1,-1 0,0,1 0,0,1
-1,-1,-1 0,0,1 1,0,0	-1,-1,-1 0,0,1 1,1,0	-1,1,-1 0,0,1 0,0,1
+1,-1,-1 0,0,1 1,0,0	1,1,-1 0,0,1 1,0,0	-1,1,-1 0,0,1 1,0,0
+1,-1,-1 0,0,1 1,0,0	-1,-1,-1 0,0,1 1,0,0	-1,1,-1 0,0,1 1,0,0
 "
 # Default lights
 default_lighting="\
-0,1,1	1,1,1
+0,1,1	0.8,0.8,0.8
 "
 
 # bc function library we use for geometry calculations
@@ -213,40 +212,29 @@ compute() {
 	echo "$line"
 }
 
-# Compute the global transformation we apply to the scene. Everything is transformed s.t. the camera
-# is at 0,0,1, screen origin at 0,0,0 and the x-y plane is essentially the screen in pixel
-# coordinates
-compute_transformation() {
+# Compute some helper geometry values
+compute_screen_vectors() {
 
-	local vec m mtemp cam_vec m_up_vec parallel_up_comp fixed_up_vec
+	local dir temp_scrh temp_scrv
 
-	# First, move the screen origin into the coordinate system origin
-	vec=$(compute "v_scale(-1, $screen_origin)")
-	m=$(compute "m_translate($vec)")
+	# cam to screen origin vector
+	dir=$(compute "v_diff($screen_origin, $cam_position)")
 
-	# Rotate the camera onto the negative z axis
-	cam_vec=$(compute "v_diff($cam_position, $screen_origin)")
-	mtemp=$(compute "m_roty(pi - s_atan2(-s_pz($cam_vec), -s_px($cam_vec)))")
-	m=$(compute "m_chain($m, $mtemp)")
-	mtemp=$(compute "m_rotx(-s_asin(s_py($cam_vec)))")
-	m=$(compute "m_chain($m, $mtemp)")
+	# compute horizontal and vectical screen vector (unscaled)
+	temp_scrh=$(compute "v_outerprod($dir, $up)")
+	temp_scrv=$(compute "v_outerprod($temp_scrh, $dir)")
 
-	# Scale z axis s.t. the camera is located at 1,0,0
-	mtemp=$(compute "m_scale(1, 1, 1 / s_len($cam_vec))")
-	m=$(compute "m_chain($m, $mtemp)")
+	# scale the vectors to half the screen size
+	temp_scrv=$(compute "v_scale(0.5 * s_innerprod($up, $temp_scrv), $temp_scrv)")
+	temp_scrh=$(compute "v_scale(s_len($temp_scrv) * $xres / $yres, $temp_scrh)")
 
-	# Rotate around the z axis, making sure that the up vector coincides with the y axis
-	parallel_up_comp=$(compute "v_scale(s_innerprod($cam_vec, $up), $cam_vec)")
-	fixed_up_vec=$(compute "v_diff($up, $parallel_up_comp)")
-	m_up_vec=$(compute "v_transform($fixed_up_vec, $m)")
-	mtemp=$(compute "m_rotz(pi / 2 - s_atan2(s_px($m_up_vec), s_py($m_up_vec)))")
-	m=$(compute "m_chain($m, $mtemp)")
+	# compute upper left of screen
+	scrul=$(compute "v_diff($screen_origin, $temp_scrh)")
+	scrul=$(compute "v_diff($scrul, $temp_scrv)")
 
-	# Scale x and y axis s.t. the pixels can be addressed as coordinates
-	mtemp=$(compute "m_scale($yres / s_len($m_up_vec), $yres / s_len($m_up_vec), 1)")
-	m=$(compute "m_chain($m, $mtemp)")
-
-	global_transform="$m"
+	# scale the horizontal and vertical vectors to pixel distance
+	scrh=$(compute "v_scale(2 / $xres, $temp_scrh)")
+	scrv=$(compute "v_scale(2 / $yres, $temp_scrv)")
 }
 
 # Read geometry from the input file, preprocess it and write it back to the geometry temp file. We
@@ -254,7 +242,7 @@ compute_transformation() {
 # the geometry file used for rendering
 prepare_geometry() {
 
-	local p1 p2 p3 n1 n2 n3 c1 c2 c3 maxz
+	local p1 n1 c1 p2 n2 c2 p3 n3 c3
 
 	# Check whether we have an input file. If not, use default geometry
 	if test -z "$geometry_file"; then
@@ -269,25 +257,13 @@ prepare_geometry() {
 		cat "$geometry_file"
 	fi |
 	# Pipe it all into the read loop
-	while read p1 n1 c1 p2 n2 c2 p3 n3 c3; do
-		# Skip over blank lines
-		if test -z "$p1"; then
-			continue;
-		fi
-
-		# Transform and compute the maximum z coordinate
-		p1=$(compute "v_transform($p1, $global_transform)")
-		p2=$(compute "v_transform($p2, $global_transform)")
-		p3=$(compute "v_transform($p3, $global_transform)")
-		n1=$(compute "v_transform($n1, $global_transform)")
-		n2=$(compute "v_transform($n2, $global_transform)")
-		n3=$(compute "v_transform($n3, $global_transform)")
-		maxz=$(compute "s_max3(s_pz($p1), s_pz($p2), s_pz($p3))")
-
-		echo "$p1 $n1 $c1 $p2 $n2 $c2 $p3 $n3 $c3 $maxz"
-	done |
-	# Sort by the generated max z coordinate and write to the geometry work file
-	sort -k 10n > "$tempdir/geom_work_file"
+        while read p1 n1 c1 p2 n2 c2 p3 n3 c3; do
+                # Strip blank lines
+                if test -z "$p1"; then
+                        continue;
+                fi
+                echo "$p1 $n1 $c1 $p2 $n2 $c2 $p3 $n3 $c3"
+        done > "$tempdir/geom_work_file"
 }
 
 # Load the file containing lighting information. The lighting information is stored to the lighting
@@ -302,85 +278,81 @@ prepare_lighting() {
 	else
 		# See whether we can read the file
 		if test ! -r "$lighting_file"; then
-			echo "Cannot read lighting file \"$geometry_file\", aborting!" >&2
+			echo "Cannot read lighting file \"$lighting_file\", aborting!" >&2
 			exit 1;
 		fi
 
 		cat "$lighting_file"
 	fi |
 	# Pipe it all into the read loop
-	while read pos color; do
-		# Skip over blank lines
-		if test -z "$pos"; then
-			continue;
-		fi
-
-		# Transform position and save result in the lighting variable
-		pos=$(compute "v_transform($pos, $global_transform)")
-		echo "$pos $color"
-	done > "$tempdir/lighting_work_file"
+        while read pos color; do
+                # Strip blank lines
+                if test -z "$pos"; then
+                        continue;
+                fi
+                echo "$pos $color"
+        done > "$tempdir/lighting_work_file"
 }
 
 # Find an intersection point and print the result
 compute_intersection() {
 
-	local xpix ypix curz color stat z b1 b2 b3
-	local p1 n1 c1 p2 n2 c2 p3 n3 c3 maxz
-
-	xpix=$1
-	ypix=$2
-	curz="1"
+	local xpix ypix stat t pi b
+	local p1 n1 c1 p2 n2 c2 p3 n3 c3
 
 	# Go through the geometry and look for intersections
 	cat "$tempdir/geom_work_file" |
-	while read p1 n1 c1 p2 n2 c2 p3 n3 c3 maxz; do
+	while read p1 n1 c1 p2 n2 c2 p3 n3 c3; do
 		# Check for intersection
-		read stat z b1 b2 b3 < \
-			<(compute "intersect($xpix, $ypix, $xres, $yres, $p1, $p2, $p3, $curz)")
+		read stat t pi b < <(compute "intersect($1, $2, $p1, $p2, $p3)")
 
 		case "$stat" in
 			hit)
-				echo "$z $b1 $b2 $b3 $p1 $n1 $c1 $p2 $n2 $c2 $p3 $n3 $c3"
+				echo "$t $pi $b $p1 $n1 $c1 $p2 $n2 $c2 $p3 $n3 $c3"
 				;;
 			miss)
 				# No hit
 				;;
-			abort)
-				# Subsequent tris won't match due to maxz
-				break
-				;;
 		esac
-	done | sort -k 1n | head -1
+	done | sort -k 1n
 }
 
 # Compute color value for a single ray. This is the workhorse function that casts a ray, finds the
 # intersection point with the geometry and calculates the final color.
 cast_ray() {
 
-	local color
-	local p1 n1 c1 p2 n2 c2 p3 n3 c3
+	local color t pi b p1 n1 c1 p2 n2 c2 p3 n3 c3 rest
+
+	# compute ray direction
+	dir=$(compute "pix_pos($scrul, $scrh, $scrv, $1, $2)")
 
 	# compute the intersection point and save the parameters
-	read z b1 b2 b3 p1 n1 c1 p2 n2 c2 p3 n3 c3 < <(compute_intersection $1 $2)
+	read t pi b p1 n1 c1 p2 n2 c2 p3 n3 c3 < <(compute_intersection $cam_position $dir)
 
-	if test -n "$z"; then
+	if test -n "$t"; then
 		# We found a hit, compute the material color and the normal
-		matcolor=$(compute "v_comb($b1, $c1, $b2, $c2, $b3, $c3)")
-		normal=$(compute "v_comb($b1, $n1, $b2, $n2, $b3, $n3)")
+		matcolor=$(compute "v_comb($b, $c1, $c2, $c3)")
+		normal=$(compute "v_comb($b, $n1, $n2, $n3)")
 
 		# compute ambient color component
 		color=$(compute "v_compprod($matcolor, $ambient_light)")
-		#while read pos col "$tempdir/lighting_work_file"; do
-		#	diffuse=$(compute "")
-		#	specular=$(compute "")
-		#done
+		exec 5<"$tempdir/lighting_work_file"
+		while read -u 5 pos col; do
+			# Check whether the light is visible
+			read t rest < <(compute_intersection $pi $pos)
+			if test -z "$t"; then
+				# No obstacles, add diffuse and specular component
+				color=$(compute "lighting($color, $col, $matcolor, \
+							$pi, $pos, $normal, $cam_position)");
+			fi
+		done
 
 	else
 		# otherwise return the background color
 		color="$background_color"
 	fi
 
-	# Write the color to the output file
+	# announce the computed color
 	echo "$color"
 }
 
@@ -501,7 +473,7 @@ collect_results() {
 #
 
 # Install a trap that kills all child processes when this shell quits
-trap "kill -KILL `jobs -p`" EXIT
+trap "kill -KILL `jobs -p` >/dev/null 2>&1" EXIT
 
 parse_options $@
 setup_tempdir
@@ -509,7 +481,7 @@ start_computation_helper
 
 echo "Preprocessing data..." >&2
 
-compute_transformation
+compute_screen_vectors
 prepare_geometry
 prepare_lighting
 
