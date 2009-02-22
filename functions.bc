@@ -1,0 +1,296 @@
+#
+# bc functions used by the raytracer script
+#
+
+# PI
+pi = 4 * a(1)
+pi2 = pi/2
+
+# print a vector
+define void pv(a[]) {
+	print a[0], ",", a[1], ",", a[2], "\n"
+}
+
+# print a matrix
+define void pm(a[]) {
+	print a[0]
+	for (i = 1; i < 16; i++) {
+		print ",", a[i]
+	}
+	print "\n"
+}
+
+# standard atan2 function
+define s_atan2(x, y) {
+	if (x == 0) {
+		if (y > 0) {
+			return pi2
+		} else {
+			return -pi2
+		}
+	}
+	if (x < 0) {
+		return a(y/x) + pi
+	} else {
+		return a(y/x)
+	}
+}
+
+# standard asin function
+define s_asin(v) {
+	return a(v / sqrt(1 - v * v))
+}
+
+# standard acos function
+define s_acos(v) {
+	return pi2 - s_asin(v)
+}
+
+# euclidean vector norm
+define s_len(x, y, z) {
+	return sqrt(x * x + y * y + z * z)
+}
+
+# sqared vector norm
+define s_len2(x, y, z) {
+	return x * x + y * y + z * z
+}
+
+# x-coordinate projection
+define s_px(x, y, z) {
+	return x
+}
+
+# y-coordinate projection
+define s_py(x, y, z) {
+	return y
+}
+
+# z-coordinate projection
+define s_pz(x, y, z) {
+	return z
+}
+
+# inner vector product
+define s_innerprod(x1, y1, z1, x2, y2, z2) {
+	return x1 * x2 + y1 * y2 + z1 * z2
+}
+
+# maximum of three values
+define s_max3(x, y, z) {
+	if (x > y) {
+		m1 = x;
+	} else {
+		m1 = y;
+	}
+	if (m1 > z) {
+		return m1;
+	} else {
+		return z;
+	}
+}
+
+# scale a vector
+define void v_scale(factor, x, y, z) {
+	a[0] = factor * x
+	a[1] = factor * y
+	a[2] = factor * z
+	pv(a[])
+}
+
+# subtract a vector from another vector
+define void v_diff(x1, y1, z1, x2, y2, z2) {
+	a[0] = x1 - x2
+	a[1] = y1 - y2
+	a[2] = z1 - z2
+	pv(a[])
+}
+
+# apply a transformation matrix to a vector
+define void v_transform(x, y, z, \
+	m11, m12, m13, m14, \
+	m21, m22, m23, m24, \
+	m31, m32, m33, m34, \
+	m41, m42, m43, m44) {
+
+	a[0] = m11 * x + m12 * y + m13 * z + m14;
+	a[1] = m21 * x + m22 * y + m23 * z + m24;
+	a[2] = m31 * x + m32 * y + m33 * z + m34;
+	a[3] = m41 * x + m42 * y + m43 * z + m44;
+
+	# normalize (we just ignore points at infinity since our calculations do not yield these)
+	s = a[3]
+	if (s != 0) {
+		a[0] /= s
+		a[1] /= s
+		a[2] /= s
+	}
+	a[3] = 1
+
+	pv(a[])
+}
+
+# convex combination of three vectors
+define void v_comb( \
+	f1, p1x, p1y, p1z, \
+	f2, p2x, p2y, p2z, \
+	f3, p3x, p3y, p3z) {
+
+	a[0] = f1 * p1x + f2 * p2x + f3 * p3x;
+	a[1] = f1 * p1y + f2 * p2y + f3 * p3y;
+	a[2] = f1 * p1z + f2 * p2z + f3 * p3z;
+
+	pv(a[])
+}
+
+# component-wise product
+define void v_compprod(p1x, p1y, p1z, p2x, p2y, p2z) {
+
+	a[0] = p1x * p2x;
+	a[1] = p1y * p2y;
+	a[2] = p1z * p2z;
+
+	pv(a[])
+}
+
+# construct a translation matrix
+define void m_translate(x, y, z) {
+	a[0] = a[5] = a[10] = a[15] = 1
+	a[3] = x
+	a[7] = y
+	a[11] = z
+	pm(a[])
+}
+
+# construct a x-rotation matrix
+define void m_rotx(v) {
+	a[0] = a[15] = 1
+	a[5] = a[10] = c(v)
+	a[6] = -s(v)
+	a[9] = s(v)
+	pm(a[])
+}
+
+# construct a y-rotation matrix
+define void m_roty(v) {
+	a[5] = a[15] = 1
+	a[0] = a[10] = c(v)
+	a[8] = -s(v)
+	a[2] = s(v)
+	pm(a[])
+}
+
+# construct a z-rotation matrix
+define void m_rotz(v) {
+	a[10] = a[15] = 1
+	a[0] = a[5] = c(v)
+	a[1] = -s(v)
+	a[4] = s(v)
+	pm(a[])
+}
+
+# construct a scaling matrix
+define void m_scale(fx, fy, fz) {
+	a[0] = fx
+	a[5] = fy
+	a[10] = fz
+	a[15] = 1
+	pm(a[])
+}
+
+# matrix multiplication
+define void m_chain( \
+	ma11, ma12, ma13, ma14, \
+	ma21, ma22, ma23, ma24, \
+	ma31, ma32, ma33, ma34, \
+	ma41, ma42, ma43, ma44, \
+	mb11, mb12, mb13, mb14, \
+	mb21, mb22, mb23, mb24, \
+	mb31, mb32, mb33, mb34, \
+	mb41, mb42, mb43, mb44) {
+
+	a[0]  = ma11 * mb11 + ma12 * mb21 + ma13 * mb31 + ma14 * mb41;
+	a[1]  = ma11 * mb12 + ma12 * mb22 + ma13 * mb32 + ma14 * mb42;
+	a[2]  = ma11 * mb13 + ma12 * mb23 + ma13 * mb33 + ma14 * mb43;
+	a[3]  = ma11 * mb14 + ma12 * mb24 + ma13 * mb34 + ma14 * mb44;
+	a[4]  = ma21 * mb11 + ma22 * mb21 + ma23 * mb31 + ma24 * mb41;
+	a[5]  = ma21 * mb12 + ma22 * mb22 + ma23 * mb32 + ma24 * mb42;
+	a[6]  = ma21 * mb13 + ma22 * mb23 + ma23 * mb33 + ma24 * mb43;
+	a[7]  = ma21 * mb14 + ma22 * mb24 + ma23 * mb34 + ma24 * mb44;
+	a[8]  = ma31 * mb11 + ma32 * mb21 + ma33 * mb31 + ma34 * mb41;
+	a[9]  = ma31 * mb12 + ma32 * mb22 + ma33 * mb32 + ma34 * mb42;
+	a[10] = ma31 * mb13 + ma32 * mb23 + ma33 * mb33 + ma34 * mb43;
+	a[11] = ma31 * mb14 + ma32 * mb24 + ma33 * mb34 + ma34 * mb44;
+	a[12] = ma41 * mb11 + ma42 * mb21 + ma43 * mb31 + ma44 * mb41;
+	a[13] = ma41 * mb12 + ma42 * mb22 + ma43 * mb32 + ma44 * mb42;
+	a[14] = ma41 * mb13 + ma42 * mb23 + ma43 * mb33 + ma44 * mb43;
+	a[15] = ma41 * mb14 + ma42 * mb24 + ma43 * mb34 + ma44 * mb44;
+
+	pm(a[])
+}
+
+define void outer_product(ax, ay, az, bx, by, bz, *c[]) {
+
+	c[0] = ay * bz - az * by
+	c[1] = az * bx - ax * bz
+	c[2] = ax * by - ay * bx
+}
+
+# intersection calcuation
+# This calculates the intersection point between a given ray and triangle. The ray is given by the
+# pixel coordinates, the triangle by three vertices.
+define void intersect( \
+	xpix, ypix, xres, yres, \
+	p1x, p1y, p1z, \
+	p2x, p2y, p2z, \
+	p3x, p3y, p3z, \
+	currentz) {
+
+	# check if we can abort
+	if (currentz < 1 && currentz > s_max3(p1z, p2z, p3z)) {
+		print "abort\n"
+		return
+	}
+
+	# the direction vector
+	dir[0] = xpix - (xres / 2)
+	dir[1] = ypix - (yres / 2)
+	dir[2] = -1
+
+	# compute normal of the triangle plane
+	outer_product(p2x - p1x, p2y - p1y, p2z - p1z, p3x - p1x, p3y - p1y, p3z - p1z, n[])
+	as = s_len2(n[0], n[1], n[2])
+
+	# parameter value
+	t = s_innerprod(p1x, p1y, p1z - 1, n[0], n[1], n[2]) \
+		/ s_innerprod(dir[0], dir[1], dir[2], n[0], n[1], n[2])
+
+	# intersection point with the plane
+	pi[0] = t * dir[0]
+	pi[1] = t * dir[1]
+	pi[2] = 1 + t * dir[2]
+
+	if (pi[2] >= 0) {
+		print "miss\n"
+		return
+	}
+
+	# compute barycentric coordinates
+	outer_product(p1x-pi[0], p1y-pi[1], p1z-pi[2], p2x-pi[0], p2y-pi[1], p2z-pi[2], b3p[])
+	b3 = sqrt(s_len2(b3p[0], b3p[1], b3p[2]) / as)
+	outer_product(p2x-pi[0], p2y-pi[1], p2z-pi[2], p3x-pi[0], p3y-pi[1], p3z-pi[2], b1p[])
+	b1 = sqrt(s_len2(b1p[0], b1p[1], b1p[2]) / as)
+	outer_product(p3x-pi[0], p3y-pi[1], p3z-pi[2], p1x-pi[0], p1y-pi[1], p1z-pi[2], b2p[])
+	b2 = sqrt(s_len2(b2p[0], b2p[1], b2p[2]) / as)
+
+	# check the coordinates to see whether the intersection point is within the triangle
+	sum = b1 + b2 + b3
+	if (sum < 0 || sum > 1) {
+		print "miss\n"
+		return
+	}
+
+	# we have a hit.
+	print "hit ", pi[2], " ", b1, " ", b2, " ", b3, "\n"
+}
+
