@@ -181,7 +181,7 @@ define void lighting( \
 	inl = s_innerprod(ix, iy, iz, nx, ny, nz)
 	fd = inl / (nlen * ilen)
 	if (fd < 0) {
-		fd = 0;
+		fd = -fd;
 	}
 
 	# specular component
@@ -213,5 +213,23 @@ define void lighting( \
 	}
 
 	pv(c[])
+}
+
+# compute a default normal if the given normal is zero
+define void fix_normal( \
+	nx, ny, nz, \
+	p1x, p1y, p1z, \
+	p2x, p2y, p2z, \
+	p3x, p3y, p3z) {
+
+	if (nx != 0 || ny != 0 || nz != 0) {
+		a[0] = nx
+		a[1] = ny
+		a[2] = nz
+	} else {
+		outer_product(p1x-p2x, p1y-p2y, p1z-p2z, p3x-p2x, p3y-p2y, p3z-p2z, a[])
+	}
+
+	pv(a[])
 }
 

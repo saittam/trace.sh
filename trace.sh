@@ -168,7 +168,13 @@ parse_options() {
 # Setup a temporary directory in which we store our intermediate data
 setup_tempdir() {
 
-	if test -n "$tempdir" -a -d "$tempdir"; then
+	if test -n "$tempdir"; then
+
+		if test ! -d "$tempdir"; then
+			echo "Bad temporary directory $tempdir" >&2
+			exit 1
+		fi
+
 		echo "Tempdir is $tempdir" >&2
 
 		rm -rf $tempdir/*
@@ -273,6 +279,9 @@ prepare_geometry() {
                 if test -z "$p1"; then
                         continue;
                 fi
+		n1=$(compute "fix_normal($n1, $p1, $p2, $p3)")
+		n2=$(compute "fix_normal($n2, $p1, $p2, $p3)")
+		n3=$(compute "fix_normal($n3, $p1, $p2, $p3)")
                 echo "$p1 $n1 $c1 $p2 $n2 $c2 $p3 $n3 $c3"
         done > "$tempdir/geom_work_file"
 }
@@ -457,7 +466,8 @@ collect_results() {
 	cat $tempdir/pixels/* | sort -k 2rn -k 1n |
 	awk -F '[ ,]' "{ print \$3 * $cs \" \" \$4 * $cs \" \" \$5 * $color_scale }" |
 	# strip the decimal part (note: rounding would be better)
-	sed -re 's/([0-9]+)(\.[0-9]+)?/\1/g' -e 's/\.[0-9]+/0/g' >> $ppmfile
+	sed -re 's/([0-9]+)(\.[0-9]+)?/\1/g' -e 's/\.[0-9]+/0/g' -e 's/-?[0-9]+[eE]-?[0-9]+/0/' \
+	>> $ppmfile
 
 	# Determine output file name
 	if test -z "$output_file"; then
@@ -491,7 +501,8 @@ cleanup() {
 	fi
 
 	# kill bc slave
-	echo "quit" >&3 2>/dev/null
+	exec 3<&-
+	exec 3<&-
 	
 	# Delete temporary directory if necessary
 	if test "$tempdel" == "1"; then
