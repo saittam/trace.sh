@@ -33,33 +33,40 @@ def doExport(file):
 		if not mesh:
 			continue
 
-		mesh.sel = True
-		mesh.quadToTriangle()
 		mesh.transform(obj.matrixWorld)
 
 		# Iterate over all faces and write the vertices
 		for face in mesh.faces:
 
-			if len(face.verts) != 3:
-				print "Skipping non-triangle face!"
+			# Determine color
+			mi = face.mat 
+			if mi < len(mesh.materials):
+				col = mesh.materials[face.mat].rgbCol
+			else :
+				col = [1.0, 1.0, 1.0]
+
+			# Write geometry
+			verts = face.v
+			nverts = len(verts)
+			if nverts == 3 :
+				writeTri(file, verts, col)
+			elif nverts == 4 :
+				writeTri(file, (verts[3], verts[1], verts[0]), col)
+				writeTri(file, (verts[1], verts[2], verts[3]), col)
+			else :
+				print "Skipping face that is neither tri nor quad!"
 				continue
 
-			for v in face.verts:
-				
-				# Write the information to the file
-				file.write('%f,%f,%f ' % tuple(v.co))
-				file.write('%f,%f,%f ' % tuple(v.no))
-				if mesh.vertexColors :
-					file.write('%f,%f,%f ' % (col.r, col.b, col.g))
-				else :
-					mi = face.mat 
-					if mi < len(mesh.materials):
-						col = mesh.materials[face.mat].rgbCol
-					else :
-						col = [1.0, 1.0, 1.0]
-					file.write('%f,%f,%f ' % tuple(col))
 
-			file.write('\n')
+def writeTri(file, verts, col) :
+
+	for v in verts:
+		# Write the information to the file
+		file.write('%f,%f,%f ' % tuple(v.co))
+		file.write('%f,%f,%f ' % tuple(v.no))
+		file.write('%f,%f,%f ' % tuple(col))
+
+	file.write('\n')
 
 def main():
 	Blender.Window.FileSelector(geomExport, 'trace.sh export',
