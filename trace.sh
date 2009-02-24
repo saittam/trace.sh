@@ -1,8 +1,25 @@
 #!/bin/bash
 # vim: tw=100 fo=2croqlt
 #
-# A simple raytracer implemented as a bash script. It reads geometry from text file and writes a
-# rendition of the scene to an image file. bc is used for geometry and lighting calculations.
+# trace.sh - A simple raytracer implemented as a bash script
+# Copyright (C) 2009 Mattias Nissler <mattias.nissler@gmx.de>
+#
+# This program is free software: you can redistribute it and/or modify it under the terms of the GNU
+# General Public License as published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along with this program. If
+# not, see <http://www.gnu.org/licenses/>.
+#
+# -------------------------------------------------------------------------------------------------
+#
+# This is a simple raytracer implemented as a bash script. It reads geometry from a text file and
+# writes a rendition of the scene to an image file. bc is used for geometry and lighting
+# calculations, which means the raytracer can potentially operate at arbitrary precision.
 #
 # Geometry is stored in a text file. Each line contains 9 fields, seperated by spaces:
 #
@@ -10,10 +27,20 @@
 #
 # The fields give the vertex position, normals and color values for 3 vertices making up a triangle.
 # Each of the fields specifies a vector in R^3, formatted as <x>,<y>,<z>. The color vectors are
-# interpreted as normalized RGB values, i.e. full saturation at value 1.
+# interpreted as normalized RGB values, i.e. full saturation at value 1. There is a geometry export
+# script for blender that can export blender meshes in the correct format.
+#
+# Parallelization is supported, the raytracer can start and control several render processes in
+# subshells. The number of render processes can be adjusted throug the -j option.
+# 
+# Only the very basic rendering code is implemented. Prominent missing features include oversampling
+# (i.e. no anti-aliasing), reflection and refraction (can easily be added but is potentially
+# expensive). Also missing is a space partitioning scheme that speeds up the rendering process. I'm
+# open to suggestions on how to implement this cleverly using bash variables and the file system.
 
 # Help text
 help_text="This is a very simple raytracer implemented in bash.
+Copyright (C) 2009 Mattias Nissler <mattias.nissler@gmx.de>
 
 Usage: $0 [options]
 
