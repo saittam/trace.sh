@@ -80,7 +80,7 @@ up="0,1,0"
 # Horizontal resolution in pixels
 xres="40"
 # Vertical resolution in pixels
-yres="30"
+yres="40"
 # Geometry file name, use default geometry if zero
 geometry_file=""
 # Lighting file name, use default lighting if zero
@@ -102,8 +102,8 @@ batch_size="100"
 color_scale="255"
 # Default geometry
 default_geometry="\
-1,-1,-1 0,0,1 1,0,0	1,1,-1 0,0,1 1,0,0	-1,1,-1 0,0,1 1,0,0
-1,-1,-1 0,0,1 1,0,0	-1,-1,-1 0,0,1 1,0,0	-1,1,-1 0,0,1 1,0,0
+1,-1,-1 0,0,1 1,0,0	1,1,-1 0,0,1 0,1,0	-1,1,-1 0,0,1 0,0,1
+1,-1,-1 0,0,1 1,0,0	-1,-1,-1 0,0,1 1,1,0	-1,1,-1 0,0,1 0,0,1
 "
 # Default lights
 default_lighting="\
@@ -346,18 +346,18 @@ prepare_lighting() {
 # Find an intersection point and print the result
 compute_intersection() {
 
-	local xpix ypix stat t pi b
+	local xpix ypix stat t pi b n
 	local p1 n1 c1 p2 n2 c2 p3 n3 c3
 
 	# Go through the geometry and look for intersections
 	cat "$tempdir/geom_work_file" |
 	while read p1 n1 c1 p2 n2 c2 p3 n3 c3; do
 		# Check for intersection
-		read stat t pi b < <(compute "intersect($1, $2, $p1, $p2, $p3)")
+		read stat t pi b n < <(compute "intersect($1, $2, $p1, $n1, $p2, $n2, $p3, $n3)")
 
 		case "$stat" in
 			hit)
-				echo "$t $pi $b $p1 $n1 $c1 $p2 $n2 $c2 $p3 $n3 $c3"
+				echo "$t $pi $b $n $p1 $n1 $c1 $p2 $n2 $c2 $p3 $n3 $c3"
 				;;
 			miss)
 				# No hit
@@ -370,18 +370,17 @@ compute_intersection() {
 # intersection point with the geometry and calculates the final color.
 cast_ray() {
 
-	local color t pi b p1 n1 c1 p2 n2 c2 p3 n3 c3 rest
+	local color t pi b n p1 n1 c1 p2 n2 c2 p3 n3 c3 rest
 
 	# compute ray direction
 	dir=$(compute "pix_pos($scrll, $scrh, $scrv, $1, $2)")
 
 	# compute the intersection point and save the parameters
-	read t pi b p1 n1 c1 p2 n2 c2 p3 n3 c3 < <(compute_intersection $cam_position $dir)
+	read t pi b n p1 n1 c1 p2 n2 c2 p3 n3 c3 < <(compute_intersection $cam_position $dir)
 
 	if test -n "$t"; then
 		# We found a hit, compute the material color and the normal
 		matcolor=$(compute "v_comb($b, $c1, $c2, $c3)")
-		normal=$(compute "v_comb($b, $n1, $n2, $n3)")
 
 		# compute ambient color component
 		color=$(compute "v_compprod($matcolor, $ambient_light)")
@@ -392,7 +391,7 @@ cast_ray() {
 			if test -z "$t"; then
 				# No obstacles, add diffuse and specular component
 				color=$(compute "lighting($color, $col, $matcolor, \
-							$pi, $pos, $normal, $cam_position)");
+								$pi, $pos, $n, $cam_position)");
 			fi
 		done
 
