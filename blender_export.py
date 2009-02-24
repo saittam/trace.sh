@@ -38,6 +38,10 @@ def doExport(file):
 		# Iterate over all faces and write the vertices
 		for face in mesh.faces:
 
+			no = None
+			if face.smooth == 0 :
+				no = face.no
+
 			# Determine color
 			mi = face.mat 
 			if mi < len(mesh.materials):
@@ -49,21 +53,24 @@ def doExport(file):
 			verts = face.v
 			nverts = len(verts)
 			if nverts == 3 :
-				writeTri(file, verts, col)
+				writeTri(file, verts, col, no)
 			elif nverts == 4 :
-				writeTri(file, (verts[3], verts[1], verts[0]), col)
-				writeTri(file, (verts[1], verts[2], verts[3]), col)
+				writeTri(file, (verts[3], verts[1], verts[0]), col, no)
+				writeTri(file, (verts[1], verts[2], verts[3]), col, no)
 			else :
 				print "Skipping face that is neither tri nor quad!"
 				continue
 
 
-def writeTri(file, verts, col) :
+def writeTri(file, verts, col, no) :
 
 	for v in verts:
 		# Write the information to the file
 		file.write('%f,%f,%f ' % tuple(v.co))
-		file.write('%f,%f,%f ' % tuple(v.no))
+		if no :
+			file.write('%f,%f,%f ' % tuple(no))
+		else :
+			file.write('%f,%f,%f ' % tuple(v.no))
 		file.write('%f,%f,%f ' % tuple(col))
 
 	file.write('\n')
