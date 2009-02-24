@@ -267,14 +267,16 @@ compute_screen_vectors() {
 	# compute horizontal and vectical screen vector (unscaled)
 	temp_scrh=$(compute "v_outerprod($dir, $up)")
 	temp_scrv=$(compute "v_outerprod($temp_scrh, $dir)")
+	temp_scrv=$(compute "v_scale(1 / s_len($temp_scrv), $temp_scrv)")
 
 	# scale the vectors to half the screen size
 	temp_scrv=$(compute "v_scale(0.5 * s_innerprod($up, $temp_scrv), $temp_scrv)")
+	temp_scrh=$(compute "v_scale(1 / s_len($temp_scrh), $temp_scrh)")
 	temp_scrh=$(compute "v_scale(s_len($temp_scrv) * $xres / $yres, $temp_scrh)")
 
-	# compute upper left of screen
-	scrul=$(compute "v_diff($screen_origin, $temp_scrh)")
-	scrul=$(compute "v_diff($scrul, $temp_scrv)")
+	# compute lower left of screen
+	scrll=$(compute "v_diff($screen_origin, $temp_scrh)")
+	scrll=$(compute "v_diff($scrll, $temp_scrv)")
 
 	# scale the horizontal and vertical vectors to pixel distance
 	scrh=$(compute "v_scale(2 / $xres, $temp_scrh)")
@@ -371,7 +373,7 @@ cast_ray() {
 	local color t pi b p1 n1 c1 p2 n2 c2 p3 n3 c3 rest
 
 	# compute ray direction
-	dir=$(compute "pix_pos($scrul, $scrh, $scrv, $1, $2)")
+	dir=$(compute "pix_pos($scrll, $scrh, $scrv, $1, $2)")
 
 	# compute the intersection point and save the parameters
 	read t pi b p1 n1 c1 p2 n2 c2 p3 n3 c3 < <(compute_intersection $cam_position $dir)
@@ -501,6 +503,8 @@ collect_results() {
 		output_file="image.$output_format"
 	fi
 
+	echo "Saving image to file $output_file" >&2 
+
 	# Convert to the requested output format
 	pnmgamma -lineartobt709 $ppmfile |
 	case "$output_format" in
@@ -569,8 +573,6 @@ wait $pids
 echo -e "\x0d100%"
 
 # Format the output image
-echo "Saving image..." >&2
-
 collect_results
 
 # Done!
