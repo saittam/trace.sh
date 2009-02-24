@@ -108,10 +108,15 @@ define void intersect( \
 	outer_product(p2x - p1x, p2y - p1y, p2z - p1z, p3x - p1x, p3y - p1y, p3z - p1z, n[])
 	as = s_len2(n[0], n[1], n[2])
 
-	# parameter value
-	t = s_innerprod(p1x - ex, p1y - ey, p1z - ez, n[0], n[1], n[2]) \
-		/ s_innerprod(dx, dy, dz, n[0], n[1], n[2])
+	# calculate parameter value t
+	denom = s_innerprod(dx, dy, dz, n[0], n[1], n[2])
+	if (denom == 0) {
+		# parallel ray
+		print "miss\n"
+		return
+	}
 
+	t = s_innerprod(p1x - ex, p1y - ey, p1z - ez, n[0], n[1], n[2]) / denom
 	if (t <= 0) {
 		print "miss\n"
 		return
@@ -175,6 +180,9 @@ define void lighting( \
 	# diffuse component
 	inl = s_innerprod(ix, iy, iz, nx, ny, nz)
 	fd = inl / (nlen * ilen)
+	if (fd < 0) {
+		fd = 0;
+	}
 
 	# specular component
 	nf = 2 * inl
@@ -188,11 +196,12 @@ define void lighting( \
 	for (i = 0; i < 4; i++) {
 		fs = fs * fs
 	}
+	fs = 0
 
 	# add the colors
-	c[0] = cbr + clr * cmr * (fd + fs)
-	c[1] = cbg + clg * cmg * (fd + fs)
-	c[2] = cbb + clb * cmb * (fd + fs)
+	c[0] = cbr + clr * cmr * fd + clr * fs
+	c[1] = cbg + clg * cmg * fd + clg * fs
+	c[2] = cbb + clb * cmb * fd + clb * fs
 
 	# clamp color values
 	for (i = 0; i < 3; i++) {

@@ -28,6 +28,7 @@ Options include:
 	-l <file>	--lights <file>			File containing light definitions
 	-o <file>	--output-file <file>		File to write the output to
 	-s <vec>	--screen-origin <vec>		Screen origin
+	-t <dir>	--temp-dir <dir>		Temporary files directory
 	-u <vec>	--up <vec>			Up vector for the screen
 	-x <num>	--x-resolution <num>		Horizontal resolution in pixels
 	-y <num>	--y-resolution <num>		Horizontal resolution in pixels
@@ -63,6 +64,8 @@ num_threads="1"
 background_color="1,1,1"
 # Ambient light
 ambient_light="0.2,0.2,0.2"
+# temporary directory, use autocreated if zero
+tempdir=""
 
 # Constants section
 
@@ -79,9 +82,14 @@ default_geometry="\
 default_lighting="\
 0,1,1	0.8,0.8,0.8
 "
+# Directory we're running from
+basedir=`dirname $0`
+
+# Whether to delete the temporary directory
+deltemp=0
 
 # bc function library we use for geometry calculations
-bc_functions=$(cat "functions.bc")
+bc_functions=$(cat "$basedir/functions.bc")
 
 # Parse command line options
 parse_options() {
@@ -132,6 +140,10 @@ parse_options() {
 				screen_origin="$1"
 				shift
 				;;
+			-t|--temp-dir)
+				tempdir="$1"
+				shift
+				;;
 			-u|--up)
 				up="$1"
 				shift
@@ -156,12 +168,14 @@ parse_options() {
 # Setup a temporary directory in which we store our intermediate data
 setup_tempdir() {
 
-	tempdir=`mktemp -d`
+	if test -n "$tempdir" -a -d "$tempdir"; then
+		echo "Tempdir is $tempdir" >&2
 
-	echo "Tempdir is $tempdir" >&2
-
-	# Install a trap that deletes $tempdir on exit
-	#trap "rm -rf $tempdir" EXIT
+		rm -rf $tempdir/*
+	else
+		tempdir=`mktemp -d`
+		deltemp=1
+	fi
 
 	# Create directories within tempdir
 	mkdir "$tempdir/bc_fifos"
@@ -189,9 +203,6 @@ start_computation_helper() {
 
 	# open file descriptors
 	exec 3>"$to_bc_fifo" 4<"$from_bc_fifo"
-
-	# clean up when done
-	trap "echo quit >&3 && rm \"$to_bc_fifo\" \"$from_bc_fifo\"" EXIT
 
 	# Load the helper function library
 	echo "$bc_functions" >&3
@@ -468,12 +479,32 @@ collect_results() {
 	esac > "$output_file"
 }
 
+# exit handler called upon shell exit
+cleanup() {
+
+	echo -e "\x0dExit!"
+
+	# kill all render threads
+	children=`jobs -p`
+	if test -n "$children"; then
+		kill $children 2>/dev/null
+	fi
+
+	# kill bc slave
+	echo "quit" >&3 2>/dev/null
+	
+	# Delete temporary directory if necessary
+	if test "$tempdel" == "1"; then
+		rm -rf "$tempdir" 2>/dev/null
+	fi
+}
+
 #
 # Main program
 #
 
-# Install a trap that kills all child processes when this shell quits
-trap "kill -KILL `jobs -p` >/dev/null 2>&1" EXIT
+# Install the exit trap
+trap cleanup EXIT
 
 parse_options $@
 setup_tempdir
