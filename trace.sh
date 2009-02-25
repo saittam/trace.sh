@@ -356,14 +356,13 @@ compute_intersection() {
 
 	# Go through the geometry and look for intersections
 	for file in $tempdir/geometry/work.*; do
-		cat "$file" |
 		while read p1 n1 c1 p2 n2 c2 p3 n3 c3; do
 			# Check for intersection
 			echo "intersect($1, $2, $p1, $n1, $c1, $p2, $n2, $c2, $p3, $n3, $c3)" >&3
-		done
+		done <"$file"
 		echo "print \"end\\n\"" >&3
 	
-		while read stat t pi b n c; do
+		while read -u 4 stat t pi b n c; do
 			case "$stat" in
 				end)
 					# End of this batch
@@ -376,7 +375,7 @@ compute_intersection() {
 					# No hit
 					;;
 			esac
-		done <&4
+		done
 	done | sort -k 1n
 }
 
@@ -384,27 +383,28 @@ compute_intersection() {
 # intersection point with the geometry and calculates the final color.
 cast_ray() {
 
-	local color t pi b n mc rest
+	local color t pi b n mc rest result
 
 	# compute ray direction
 	dir=$(compute "pix_pos($scrll, $scrh, $scrv, $1, $2)")
 
 	# compute the intersection point and save the parameters
-	read t pi b n mc < <(compute_intersection $cam_position $dir)
+	result=$(compute_intersection $cam_position $dir)
+	read t pi b n mc <<<"$result"
 
 	if test -n "$t"; then
 		# compute ambient color component
 		color=$(compute "v_compprod($mc, $ambient_light)")
-		exec 5<"$tempdir/lighting_work_file"
-		while read -u 5 pos col; do
+		while read pos col; do
 			# Check whether the light is visible
-			read t rest < <(compute_intersection $pi $pos)
+			result=$(compute_intersection $pi $pos)
+			read t rest <<<"$result"
 			if test -z "$t"; then
 				# No obstacles, add diffuse and specular component
 				color=$(compute "lighting($color, $col, $mc, \
 								$pi, $pos, $n, $cam_position)");
 			fi
-		done
+		done <"$tempdir/lighting_work_file"
 
 	else
 		# otherwise return the background color
