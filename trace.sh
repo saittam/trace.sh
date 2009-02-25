@@ -516,7 +516,7 @@ collect_results() {
 	echo "Saving image to file $output_file" >&2 
 
 	# Convert to the requested output format
-	pnmgamma -lineartobt709 $ppmfile |
+	cat $ppmfile |
 	case "$output_format" in
 		png)
 			pnmtopng
