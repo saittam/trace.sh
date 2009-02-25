@@ -97,7 +97,9 @@ tempdir=""
 # Constants section
 
 # Size of the pixel batches
-batch_size="100"
+pixel_batch_size="100"
+# Size of triangle batches
+triangle_batch_size="100"
 # Color scale
 color_scale="255"
 # Default geometry
@@ -213,6 +215,7 @@ setup_tempdir() {
 	# Create directories within tempdir
 	mkdir "$tempdir/bc_fifos"
 	mkdir "$tempdir/locks"
+	mkdir "$tempdir/geometry"
 	mkdir "$tempdir/pixels"
 }
 
@@ -312,7 +315,9 @@ prepare_geometry() {
 		n2=$(compute "fix_normal($n2, $p1, $p2, $p3)")
 		n3=$(compute "fix_normal($n3, $p1, $p2, $p3)")
                 echo "$p1 $n1 $c1 $p2 $n2 $c2 $p3 $n3 $c3"
-        done > "$tempdir/geom_work_file"
+        done |
+	# Write batches to the work files
+	split -d -l $triangle_batch_size - "$tempdir/geometry/work."
 }
 
 # Load the file containing lighting information. The lighting information is stored to the lighting
@@ -346,23 +351,32 @@ prepare_lighting() {
 # Find an intersection point and print the result
 compute_intersection() {
 
-	local xpix ypix stat t pi b n
+	local xpix ypix stat t pi b n c
 	local p1 n1 c1 p2 n2 c2 p3 n3 c3
 
 	# Go through the geometry and look for intersections
-	cat "$tempdir/geom_work_file" |
-	while read p1 n1 c1 p2 n2 c2 p3 n3 c3; do
-		# Check for intersection
-		read stat t pi b n < <(compute "intersect($1, $2, $p1, $n1, $p2, $n2, $p3, $n3)")
-
-		case "$stat" in
-			hit)
-				echo "$t $pi $b $n $p1 $n1 $c1 $p2 $n2 $c2 $p3 $n3 $c3"
-				;;
-			miss)
-				# No hit
-				;;
-		esac
+	for file in $tempdir/geometry/work.*; do
+		cat "$file" |
+		while read p1 n1 c1 p2 n2 c2 p3 n3 c3; do
+			# Check for intersection
+			echo "intersect($1, $2, $p1, $n1, $c1, $p2, $n2, $c2, $p3, $n3, $c3)" >&3
+		done
+		echo "print \"end\\n\"" >&3
+	
+		while read stat t pi b n c; do
+			case "$stat" in
+				end)
+					# End of this batch
+					break
+					;;
+				hit)
+					echo "$t $pi $b $n $c"
+					;;
+				miss)
+					# No hit
+					;;
+			esac
+		done <&4
 	done | sort -k 1n
 }
 
@@ -370,27 +384,24 @@ compute_intersection() {
 # intersection point with the geometry and calculates the final color.
 cast_ray() {
 
-	local color t pi b n p1 n1 c1 p2 n2 c2 p3 n3 c3 rest
+	local color t pi b n mc rest
 
 	# compute ray direction
 	dir=$(compute "pix_pos($scrll, $scrh, $scrv, $1, $2)")
 
 	# compute the intersection point and save the parameters
-	read t pi b n p1 n1 c1 p2 n2 c2 p3 n3 c3 < <(compute_intersection $cam_position $dir)
+	read t pi b n mc < <(compute_intersection $cam_position $dir)
 
 	if test -n "$t"; then
-		# We found a hit, compute the material color and the normal
-		matcolor=$(compute "v_comb($b, $c1, $c2, $c3)")
-
 		# compute ambient color component
-		color=$(compute "v_compprod($matcolor, $ambient_light)")
+		color=$(compute "v_compprod($mc, $ambient_light)")
 		exec 5<"$tempdir/lighting_work_file"
 		while read -u 5 pos col; do
 			# Check whether the light is visible
 			read t rest < <(compute_intersection $pi $pos)
 			if test -z "$t"; then
 				# No obstacles, add diffuse and specular component
-				color=$(compute "lighting($color, $col, $matcolor, \
+				color=$(compute "lighting($color, $col, $mc, \
 								$pi, $pos, $n, $cam_position)");
 			fi
 		done
@@ -440,7 +451,7 @@ get_next_batch() {
 
 	echo $old_value
 
-	new_value=$((old_value + batch_size))
+	new_value=$((old_value + pixel_batch_size))
 	echo "$new_value" > "$tempdir/current_batch"
 
 	# Write status information
@@ -464,7 +475,7 @@ render_thread() {
 	while true; do
 		bs=$(get_next_batch)
 		
-		for ((i = 0; i < batch_size; i++)); do
+		for ((i = 0; i < pixel_batch_size; i++)); do
 			ypix=$(((bs + i) / xres))
 			xpix=$(((bs + i) % xres))
 

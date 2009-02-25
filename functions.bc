@@ -102,10 +102,13 @@ define void intersect( \
 	tx, ty, tz, \
 	p1x, p1y, p1z, \
 	n1x, n1y, n1z, \
+	c1r, c1g, c1b, \
 	p2x, p2y, p2z, \
 	n2x, n2y, n2z, \
+	c2r, c2g, c2b, \
 	p3x, p3y, p3z, \
-	n3x, n3y, n3z) {
+	n3x, n3y, n3z, \
+	c3r, c3g, c3b) {
 
 	# compute direction vector
 	dx = tx - ex
@@ -160,9 +163,14 @@ define void intersect( \
 		nsz = -nsz
 	}
 
+	# compute the color
+	cr = b1 * c1r + b2 * c2r + b3 * c3r
+	cg = b1 * c1g + b2 * c2g + b3 * c3g
+	cb = b1 * c1b + b2 * c2b + b3 * c3b
+
 	# we have a hit.
 	print "hit ", t, " ", pi[0], ",", pi[1], ",", pi[2], " ", b1, ",", b2, ",", b3, \
-		" ", nsx, ",", nsy, ",", nsz, "\n"
+		" ", nsx, ",", nsy, ",", nsz, " ", cr, ",", cg, ",", cb, "\n"
 }
 
 # Transform pixel coordinates into scene coordinates
