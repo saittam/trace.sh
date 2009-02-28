@@ -16,10 +16,6 @@
 # not, see <http://www.gnu.org/licenses/>.
 #
 
-# PI
-pi = 4 * a(1)
-pi2 = pi/2
-
 # print a vector
 define void pv(a[]) {
 	print a[0], ",", a[1], ",", a[2], "\n"

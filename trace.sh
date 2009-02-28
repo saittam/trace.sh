@@ -93,6 +93,8 @@ background_color="1,1,1"
 ambient_light="0.2,0.2,0.2"
 # temporary directory, use autocreated if zero
 tempdir=""
+# Single pixel to render
+single_pixel=""
 
 # Constants section
 
@@ -168,6 +170,10 @@ parse_options() {
 			-s|--screen-origin)
 				screen_origin="$1"
 				shift
+				;;
+			--single-pixel)
+				single_pixel="$1 $2"
+				shift 2
 				;;
 			-t|--temp-dir)
 				tempdir="$1"
@@ -291,7 +297,10 @@ compute_screen_vectors() {
 # the geometry file used for rendering
 prepare_geometry() {
 
-	local p1 n1 c1 p2 n2 c2 p3 n3 c3
+	local tid p1 n1 c1 p2 n2 c2 p3 n3 c3
+
+	# Triangle identifier
+	let "tid = 0"
 
 	# Check whether we have an input file. If not, use default geometry
 	if test -z "$geometry_file"; then
@@ -314,7 +323,8 @@ prepare_geometry() {
 		n1=$(compute "fix_normal($n1, $p1, $p2, $p3)")
 		n2=$(compute "fix_normal($n2, $p1, $p2, $p3)")
 		n3=$(compute "fix_normal($n3, $p1, $p2, $p3)")
-                echo "$p1 $n1 $c1 $p2 $n2 $c2 $p3 $n3 $c3"
+                echo "$tid $p1 $n1 $c1 $p2 $n2 $c2 $p3 $n3 $c3"
+		let "tid++"
         done |
 	# Write batches to the work files
 	split -d -l $triangle_batch_size - "$tempdir/geometry/work."
@@ -352,52 +362,57 @@ prepare_lighting() {
 compute_intersection() {
 
 	local xpix ypix stat t pi b n c
-	local p1 n1 c1 p2 n2 c2 p3 n3 c3
+	local tid p1 n1 c1 p2 n2 c2 p3 n3 c3
 
 	# Go through the geometry and look for intersections
 	for file in $tempdir/geometry/work.*; do
-		while read p1 n1 c1 p2 n2 c2 p3 n3 c3; do
+		while read tid p1 n1 c1 p2 n2 c2 p3 n3 c3; do
+			# Don't test the blacklisted triangle
+			if test "$tid" == "$3"; then
+				continue;
+			fi
 			# Check for intersection
+			echo "print \"$tid \";" >&3
 			echo "intersect($1, $2, $p1, $n1, $c1, $p2, $n2, $c2, $p3, $n3, $c3)" >&3
 		done <"$file"
-		echo "print \"end\\n\"" >&3
+		echo "print \"null end\\n\"" >&3
 	
-		while read -u 4 stat t pi b n c; do
+		while read -u 4 tid stat t pi b n c; do
 			case "$stat" in
 				end)
 					# End of this batch
 					break
 					;;
 				hit)
-					echo "$t $pi $b $n $c"
+					echo "$tid $t $pi $b $n $c"
 					;;
 				miss)
 					# No hit
 					;;
 			esac
 		done
-	done | sort -k 1n
+	done | sort -k 2n
 }
 
 # Compute color value for a single ray. This is the workhorse function that casts a ray, finds the
 # intersection point with the geometry and calculates the final color.
 cast_ray() {
 
-	local color t pi b n mc rest result
+	local tid color t pi b n mc rest result
 
 	# compute ray direction
 	dir=$(compute "pix_pos($scrll, $scrh, $scrv, $1, $2)")
 
 	# compute the intersection point and save the parameters
 	result=$(compute_intersection $cam_position $dir)
-	read t pi b n mc <<<"$result"
+	read tid t pi b n mc <<<"$result"
 
 	if test -n "$t"; then
 		# compute ambient color component
 		color=$(compute "v_compprod($mc, $ambient_light)")
 		while read pos col; do
 			# Check whether the light is visible
-			result=$(compute_intersection $pi $pos)
+			result=$(compute_intersection $pi $pos $tid)
 			read t rest <<<"$result"
 			if test -z "$t"; then
 				# No obstacles, add diffuse and specular component
@@ -570,20 +585,27 @@ prepare_lighting
 
 echo "Start rendering..." >&2
 
-# Run the render threads
-pids=""
-for ((i = 0; i < num_threads; i++)); do
-	render_thread "rt$i" &
-	pids="$! $pids"
-done
+# Check if we only want to render a single pixel or everything.
+if test -n "$single_pixel"; then
+	read x y <<<"$single_pixel"
+	color=$(cast_ray $x $y)
+	echo "Pixel $x|$y color: $color"
+else
+	# Run the render threads
+	pids=""
+	for ((i = 0; i < num_threads; i++)); do
+		render_thread "rt$i" &
+		pids="$! $pids"
+	done
 
-# Wait for all the render threads to complete
-wait $pids
+	# Wait for all the render threads to complete
+	wait $pids
 
-echo -e "\x0d100%"
+	echo -e "\x0d100%"
 
-# Format the output image
-collect_results
+	# Format the output image
+	collect_results
+fi
 
 # Done!
 echo "Finished." >&2
