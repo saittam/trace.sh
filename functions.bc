@@ -204,7 +204,9 @@ define void lighting( \
 	inl = s_innerprod(ix, iy, iz, nx, ny, nz)
 	fd = inl / (nlen * ilen)
 	if (fd < 0) {
-		fd = 0;
+		# Light is on wrong side of surface. Skip.
+		print cbr, ",", cbg, ",", cbb, "\n"
+		return
 	}
 
 	# specular component
