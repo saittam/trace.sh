@@ -16,6 +16,12 @@
 # not, see <http://www.gnu.org/licenses/>.
 #
 
+# compute epsilon
+epsilon = 1
+for (i = 0; i < (0.8) * scale; i++) {
+	epsilon = epsilon / 10
+}
+
 # print a vector
 define void pv(a[]) {
 	print a[0], ",", a[1], ",", a[2], "\n"
@@ -144,7 +150,7 @@ define void intersect( \
 
 	# check the coordinates to see whether the intersection point is within the triangle
 	sum = b1 + b2 + b3
-	if (sum < 0 || sum > 1) {
+	if (sum < 0 - epsilon || sum > 1 + epsilon) {
 		print "miss\n"
 		return
 	}
