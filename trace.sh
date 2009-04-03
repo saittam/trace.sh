@@ -561,7 +561,7 @@ cleanup() {
 	exec 3<&-
 	
 	# Delete temporary directory if necessary
-	if test "$tempdel" == "1"; then
+	if test "$deltemp" == "1"; then
 		rm -rf "$tempdir" 2>/dev/null
 	fi
 }
