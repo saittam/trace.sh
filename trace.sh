@@ -54,6 +54,7 @@ Options include:
 	-j <int>	--num-threads <int>		Number of parallel render threads
 	-l <file>	--lights <file>			File containing light definitions
 	-o <file>	--output-file <file>		File to write the output to
+	-r <dir>	--resume <dir>			Resume rendering in temporary directory
 	-s <vec>	--screen-origin <vec>		Screen origin
 	-t <dir>	--temp-dir <dir>		Temporary files directory
 	-u <vec>	--up <vec>			Up vector for the screen
@@ -95,6 +96,8 @@ ambient_light="0.2,0.2,0.2"
 tempdir=""
 # Single pixel to render
 single_pixel=""
+# Resume flag
+resume=""
 
 # Constants section
 
@@ -175,6 +178,11 @@ parse_options() {
 				single_pixel="$1 $2"
 				shift 2
 				;;
+			-r|--resume)
+				resume="1"
+				tempdir="$1"
+				shift
+				;;
 			-t|--temp-dir)
 				tempdir="$1"
 				shift
@@ -200,10 +208,52 @@ parse_options() {
 	done
 }
 
+# Save options so they can be restored when resuming. This writes all configuration variables to a
+# file that is sourced on resume.
+save_options() {
+
+	local vars options_file
+	vars="output_file output_format cam_position screen_origin up xres yres geometry_file \
+		lighting_file num_threads background_color ambient_light single_pixel"
+
+	options_file="$tempdir/options"
+	echo "# Render options for rendering run started at $(date)" > $options_file
+	for var in $vars; do
+		echo "$var=\"${!var}\"" >> $options_file
+	done
+}
+
+# Try to resume a previous rendering run. Loads the configuration from the options file. All
+# previously set options will be overridden.
+try_to_resume() {
+	
+	if test ! -r "$tempdir/options"; then
+		echo "Cannot read rendering options file within $tempdir" >&2
+		exit 1
+	fi
+
+	. "$tempdir/options"
+
+	# Clean up the temporary directory, only keep pixel information
+	rm -rf "$tempdir/bc_fifos/"*
+	rm -rf "$tempdir/locks/"*
+	rm -rf "$tempdir/geometry/"*
+	rm "$tempdir/lighting_work_file"
+
+	# Figure out which pixel we need to restart at
+	cat "$tempdir/pixels/"* | sort -n | nl -v 0 |
+	awk '{ if ($1 != $2) { print $1; exit } } END { print NR }' |
+	head -1 > "$tempdir/current_batch"
+}
+
 # Setup a temporary directory in which we store our intermediate data
 setup_tempdir() {
 
 	if test -n "$tempdir"; then
+
+		if test ! -e "$tempdir"; then
+			mkdir "$tempdir" &>/dev/null
+		fi
 
 		if test ! -d "$tempdir"; then
 			echo "Bad temporary directory $tempdir" >&2
@@ -212,7 +262,9 @@ setup_tempdir() {
 
 		echo "Tempdir is $tempdir" >&2
 
-		rm -rf $tempdir/*
+		if test -z "$resume"; then
+			rm -rf $tempdir/*
+		fi
 	else
 		tempdir=`mktemp -d`
 		deltemp=1
@@ -500,7 +552,7 @@ render_thread() {
 
 			color=$(cast_ray $xpix $ypix)
 
-			echo "$xpix $ypix $color" >> "$tempdir/pixels/out.$threadid"
+			echo "$((bs + i)) $xpix $ypix $color" >> "$tempdir/pixels/out.$threadid"
 		done
 	done
 }
@@ -517,11 +569,11 @@ collect_results() {
 	echo "P3 $xres $yres $color_scale" > $ppmfile
 
 	# Merge all output, sort it by pixel (reverse y here!) and bring it into ppm format
-	cat $tempdir/pixels/* | sort -k 2rn -k 1n |
-	awk -F '[ ,]' "{ print \$3 * $cs \" \" \$4 * $cs \" \" \$5 * $color_scale }" |
+	cat "$tempdir/pixels/"* | sort -k 2rn -k 1n |
+	awk -F '[ ,]' "{ print \$4 * $cs \" \" \$5 * $cs \" \" \$6 * $color_scale }" |
 	# strip the decimal part (note: rounding would be better)
 	sed -re 's/([0-9]+)(\.[0-9]+)?/\1/g' -e 's/\.[0-9]+/0/g' -e 's/-?[0-9]+[eE]-?[0-9]+/0/' \
-	>> $ppmfile
+	>> "$ppmfile"
 
 	# Determine output file name
 	if test -z "$output_file"; then
@@ -531,7 +583,7 @@ collect_results() {
 	echo "Saving image to file $output_file" >&2 
 
 	# Convert to the requested output format
-	cat $ppmfile |
+	cat "$ppmfile" |
 	case "$output_format" in
 		png)
 			pnmtopng
@@ -574,7 +626,12 @@ cleanup() {
 trap cleanup EXIT
 
 parse_options $@
-setup_tempdir
+if test -n "$resume"; then
+	try_to_resume
+else
+	setup_tempdir
+	save_options
+fi
 start_computation_helper
 
 echo "Preprocessing data..." >&2
