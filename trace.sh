@@ -54,6 +54,7 @@ Options include:
 	-j <int>	--num-threads <int>		Number of parallel render threads
 	-l <file>	--lights <file>			File containing light definitions
 	-o <file>	--output-file <file>		File to write the output to
+	-p <num>	--precision <num>		Decimal precision for calculations
 	-r <dir>	--resume <dir>			Resume rendering in temporary directory
 	-s <vec>	--screen-origin <vec>		Screen origin
 	-t <dir>	--temp-dir <dir>		Temporary files directory
@@ -98,6 +99,8 @@ tempdir=""
 single_pixel=""
 # Resume flag
 resume=""
+# Calculation precision (bc scale)
+precision="20"
 
 # Constants section
 
@@ -170,6 +173,15 @@ parse_options() {
 				output_file="$1"
 				shift
 				;;
+			-p|--precision)
+				precision="$1"
+				shift
+				;;
+			-r|--resume)
+				resume="1"
+				tempdir="$1"
+				shift
+				;;
 			-s|--screen-origin)
 				screen_origin="$1"
 				shift
@@ -177,11 +189,6 @@ parse_options() {
 			--single-pixel)
 				single_pixel="$1 $2"
 				shift 2
-				;;
-			-r|--resume)
-				resume="1"
-				tempdir="$1"
-				shift
 				;;
 			-t|--temp-dir)
 				tempdir="$1"
@@ -214,7 +221,7 @@ save_options() {
 
 	local vars options_file
 	vars="output_file output_format cam_position screen_origin up xres yres geometry_file \
-		lighting_file num_threads background_color ambient_light single_pixel"
+		lighting_file num_threads background_color ambient_light single_pixel precision"
 
 	options_file="$tempdir/options"
 	echo "# Render options for rendering run started at $(date)" > $options_file
@@ -241,7 +248,7 @@ try_to_resume() {
 	rm "$tempdir/lighting_work_file"
 
 	# Figure out which pixel we need to restart at
-	cat "$tempdir/pixels/"* | sort -n | nl -v 0 |
+	cat "$tempdir/pixels/"* | sort -n | uniq | nl -v 0 |
 	awk '{ if ($1 != $2) { print $1; exit } } END { print NR }' |
 	head -1 > "$tempdir/current_batch"
 }
@@ -300,6 +307,9 @@ start_computation_helper() {
 
 	# Load the helper function library
 	echo "$bc_functions" >&3
+
+	# Set scale
+	echo "scale=$precision" >&3
 }
 
 # Sends a command to the computation helper and reads a single result line
@@ -569,7 +579,7 @@ collect_results() {
 	echo "P3 $xres $yres $color_scale" > $ppmfile
 
 	# Merge all output, sort it by pixel (reverse y here!) and bring it into ppm format
-	cat "$tempdir/pixels/"* | sort -k 2rn -k 1n |
+	cat "$tempdir/pixels/"* | sort -k 3rn -k 2n | uniq |
 	awk -F '[ ,]' "{ print \$4 * $cs \" \" \$5 * $cs \" \" \$6 * $color_scale }" |
 	# strip the decimal part (note: rounding would be better)
 	sed -re 's/([0-9]+)(\.[0-9]+)?/\1/g' -e 's/\.[0-9]+/0/g' -e 's/-?[0-9]+[eE]-?[0-9]+/0/' \
