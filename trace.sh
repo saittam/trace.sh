@@ -580,7 +580,7 @@ collect_results() {
 
 	# Merge all output, sort it by pixel (reverse y here!) and bring it into ppm format
 	cat "$tempdir/pixels/"* | sort -k 3rn -k 2n | uniq |
-	awk -F '[ ,]' "{ print \$4 * $cs \" \" \$5 * $cs \" \" \$6 * $color_scale }" |
+	awk -F '[ ,]' "{ print \$4 * $cs \" \" \$5 * $cs \" \" \$6 * $cs }" |
 	# strip the decimal part (note: rounding would be better)
 	sed -re 's/([0-9]+)(\.[0-9]+)?/\1/g' -e 's/\.[0-9]+/0/g' -e 's/-?[0-9]+[eE]-?[0-9]+/0/' \
 	>> "$ppmfile"
