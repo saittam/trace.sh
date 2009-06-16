@@ -612,16 +612,16 @@ cleanup() {
 
 	echo -e "\x0dExit!"
 
+	# kill bc slave
+	exec 3<&-
+	exec 4<&-
+	
 	# kill all render threads
 	children=`jobs -p`
 	if test -n "$children"; then
 		kill $children 2>/dev/null
 	fi
 
-	# kill bc slave
-	exec 3<&-
-	exec 3<&-
-	
 	# Delete temporary directory if necessary
 	if test "$deltemp" == "1"; then
 		rm -rf "$tempdir" 2>/dev/null
